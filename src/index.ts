@@ -4,6 +4,7 @@ export { Loader } from "./loaders/Loader";
 export { PLYLoader } from "./loaders/PLYLoader";
 export { WebGLRenderer } from "./renderers/WebGLRenderer";
 export { OrbitControls } from "./controls/OrbitControls";
+export { FollowCameraTrackControls } from "./controls/FollowCameraTrackControls";
 export { Quaternion } from "./math/Quaternion";
 export { Vector3 } from "./math/Vector3";
 export { Matrix4 } from "./math/Matrix4";
