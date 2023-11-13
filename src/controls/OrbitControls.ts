@@ -328,8 +328,6 @@ class OrbitControls {
 
 
         this.attach(inputCamera);
-        this.initialize()
-        this.update();
     }
 }
 

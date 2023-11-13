@@ -4,6 +4,8 @@ import { Vector3 } from "../math/Vector3";
 import { EventDispatcher } from "./EventDispatcher";
 
 class Scene extends EventDispatcher {
+    static RowLength = 3 * 4 + 3 * 4 + 4 + 4;
+
     private _data: Uint32Array;
     private _width: number;
     private _height: number;
@@ -16,6 +18,7 @@ class Scene extends EventDispatcher {
     translate: (translation: Vector3) => void;
     rotate: (rotation: Quaternion) => void;
     scale: (scale: Vector3) => void;
+    limitBox: (xMin: number, xMax: number, yMin: number, yMax: number, zMin: number, zMax: number) => void;
     saveToFile: (name: string) => void;
 
     constructor() {
@@ -58,7 +61,6 @@ class Scene extends EventDispatcher {
         };
 
         const changeEvent = { type: "change" } as Event;
-        const rowLength = 3 * 4 + 3 * 4 + 4 + 4;
 
         this._data = new Uint32Array(0);
         this._vertexCount = 0;
@@ -68,27 +70,8 @@ class Scene extends EventDispatcher {
         this._rotations = new Float32Array(0);
         this._scales = new Float32Array(0);
 
-        const cachePositions = (f_buffer: Float32Array, index: number) => {
-            this._positions[3 * index + 0] = f_buffer[8 * index + 0];
-            this._positions[3 * index + 1] = f_buffer[8 * index + 1];
-            this._positions[3 * index + 2] = f_buffer[8 * index + 2];
-        };
-
-        const cacheRotations = (u_buffer: Uint8Array, index: number) => {
-            this._rotations[4 * index + 0] = (u_buffer[32 * index + 28 + 0] - 128) / 128;
-            this._rotations[4 * index + 1] = (u_buffer[32 * index + 28 + 1] - 128) / 128;
-            this._rotations[4 * index + 2] = (u_buffer[32 * index + 28 + 2] - 128) / 128;
-            this._rotations[4 * index + 3] = (u_buffer[32 * index + 28 + 3] - 128) / 128;
-        };
-
-        const cacheScales = (f_buffer: Float32Array, index: number) => {
-            this._scales[3 * index + 0] = f_buffer[8 * index + 3 + 0];
-            this._scales[3 * index + 1] = f_buffer[8 * index + 3 + 1];
-            this._scales[3 * index + 2] = f_buffer[8 * index + 3 + 2];
-        };
-
         this.setData = (data: Uint8Array) => {
-            this._vertexCount = data.length / rowLength;
+            this._vertexCount = data.length / Scene.RowLength;
             this._height = Math.ceil((2 * this._vertexCount) / this._width);
             this._data = new Uint32Array(this._width * this._height * 4);
             this._positions = new Float32Array(3 * this._vertexCount);
@@ -102,7 +85,19 @@ class Scene extends EventDispatcher {
             const data_f = new Float32Array(this._data.buffer);
 
             for (let i = 0; i < this._vertexCount; i++) {
-                cachePositions(f_buffer, i);
+                this._positions[3 * i + 0] = f_buffer[8 * i + 0];
+                this._positions[3 * i + 1] = f_buffer[8 * i + 1];
+                this._positions[3 * i + 2] = f_buffer[8 * i + 2];
+
+                this._rotations[4 * i + 0] = (u_buffer[32 * i + 28 + 0] - 128) / 128;
+                this._rotations[4 * i + 1] = (u_buffer[32 * i + 28 + 1] - 128) / 128;
+                this._rotations[4 * i + 2] = (u_buffer[32 * i + 28 + 2] - 128) / 128;
+                this._rotations[4 * i + 3] = (u_buffer[32 * i + 28 + 3] - 128) / 128;
+
+                this._scales[3 * i + 0] = f_buffer[8 * i + 3 + 0];
+                this._scales[3 * i + 1] = f_buffer[8 * i + 3 + 1];
+                this._scales[3 * i + 2] = f_buffer[8 * i + 3 + 2];
+
                 data_f[8 * i + 0] = this._positions[3 * i + 0];
                 data_f[8 * i + 1] = this._positions[3 * i + 1];
                 data_f[8 * i + 2] = this._positions[3 * i + 2];
@@ -112,7 +107,6 @@ class Scene extends EventDispatcher {
                 data_c[4 * (8 * i + 7) + 2] = u_buffer[32 * i + 24 + 2];
                 data_c[4 * (8 * i + 7) + 3] = u_buffer[32 * i + 24 + 3];
 
-                cacheRotations(u_buffer, i);
                 const rot = Matrix3.RotationFromQuaternion(
                     new Quaternion(
                         this._rotations[4 * i + 1],
@@ -122,7 +116,6 @@ class Scene extends EventDispatcher {
                     ),
                 );
 
-                cacheScales(f_buffer, i);
                 const scale = Matrix3.Diagonal(
                     new Vector3(this._scales[3 * i + 0], this._scales[3 * i + 1], this._scales[3 * i + 2]),
                 );
@@ -149,10 +142,13 @@ class Scene extends EventDispatcher {
         this.translate = (translation: Vector3) => {
             const data_f = new Float32Array(this._data.buffer);
             for (let i = 0; i < this._vertexCount; i++) {
-                data_f[8 * i + 0] += translation.x;
-                data_f[8 * i + 1] += translation.y;
-                data_f[8 * i + 2] += translation.z;
-                cachePositions(data_f, i);
+                this._positions[3 * i + 0] += translation.x;
+                this._positions[3 * i + 1] += translation.y;
+                this._positions[3 * i + 2] += translation.z;
+
+                data_f[8 * i + 0] = this._positions[3 * i + 0];
+                data_f[8 * i + 1] = this._positions[3 * i + 1];
+                data_f[8 * i + 2] = this._positions[3 * i + 2];
             }
 
             this.dispatchEvent(changeEvent);
@@ -167,10 +163,13 @@ class Scene extends EventDispatcher {
                 const y = this._positions[3 * i + 1];
                 const z = this._positions[3 * i + 2];
 
-                data_f[8 * i + 0] = R[0] * x + R[1] * y + R[2] * z;
-                data_f[8 * i + 1] = R[3] * x + R[4] * y + R[5] * z;
-                data_f[8 * i + 2] = R[6] * x + R[7] * y + R[8] * z;
-                cachePositions(data_f, i);
+                this._positions[3 * i + 0] = R[0] * x + R[1] * y + R[2] * z;
+                this._positions[3 * i + 1] = R[3] * x + R[4] * y + R[5] * z;
+                this._positions[3 * i + 2] = R[6] * x + R[7] * y + R[8] * z;
+
+                data_f[8 * i + 0] = this._positions[3 * i + 0];
+                data_f[8 * i + 1] = this._positions[3 * i + 1];
+                data_f[8 * i + 2] = this._positions[3 * i + 2];
 
                 const currentRotation = new Quaternion(
                     this._rotations[4 * i + 1],
@@ -221,10 +220,13 @@ class Scene extends EventDispatcher {
             const data_f = new Float32Array(this._data.buffer);
 
             for (let i = 0; i < this.vertexCount; i++) {
-                data_f[8 * i + 0] *= scale.x;
-                data_f[8 * i + 1] *= scale.y;
-                data_f[8 * i + 2] *= scale.z;
-                cachePositions(data_f, i);
+                this._positions[3 * i + 0] *= scale.x;
+                this._positions[3 * i + 1] *= scale.y;
+                this._positions[3 * i + 2] *= scale.z;
+
+                data_f[8 * i + 0] = this._positions[3 * i + 0];
+                data_f[8 * i + 1] = this._positions[3 * i + 1];
+                data_f[8 * i + 2] = this._positions[3 * i + 2];
 
                 this._scales[3 * i + 0] *= scale.x;
                 this._scales[3 * i + 1] *= scale.y;
@@ -262,9 +264,98 @@ class Scene extends EventDispatcher {
             this.dispatchEvent(changeEvent);
         };
 
+        this.limitBox = (xMin: number, xMax: number, yMin: number, yMax: number, zMin: number, zMax: number) => {
+            if (xMin >= xMax) {
+                throw new Error(`xMin (${xMin}) must be smaller than xMax (${xMax})`);
+            }
+            if (yMin >= yMax) {
+                throw new Error(`yMin (${yMin}) must be smaller than yMax (${yMax})`);
+            }
+            if (zMin >= zMax) {
+                throw new Error(`zMin (${zMin}) must be smaller than zMax (${zMax})`);
+            }
+
+            const mask = new Uint8Array(this._vertexCount);
+            for (let i = 0; i < this._vertexCount; i++) {
+                const x = this._positions[3 * i + 0];
+                const y = this._positions[3 * i + 1];
+                const z = this._positions[3 * i + 2];
+
+                if (x >= xMin && x <= xMax && y >= yMin && y <= yMax && z >= zMin && z <= zMax) {
+                    mask[i] = 1;
+                }
+            }
+
+            let newIndex = 0;
+            for (let i = 0; i < this._vertexCount; i++) {
+                if (mask[i] === 0) continue;
+
+                this._data[8 * newIndex + 0] = this._data[8 * i + 0];
+                this._data[8 * newIndex + 1] = this._data[8 * i + 1];
+                this._data[8 * newIndex + 2] = this._data[8 * i + 2];
+                this._data[8 * newIndex + 3] = this._data[8 * i + 3];
+                this._data[8 * newIndex + 4] = this._data[8 * i + 4];
+                this._data[8 * newIndex + 5] = this._data[8 * i + 5];
+                this._data[8 * newIndex + 6] = this._data[8 * i + 6];
+                this._data[8 * newIndex + 7] = this._data[8 * i + 7];
+
+                this._positions[3 * newIndex + 0] = this._positions[3 * i + 0];
+                this._positions[3 * newIndex + 1] = this._positions[3 * i + 1];
+                this._positions[3 * newIndex + 2] = this._positions[3 * i + 2];
+
+                this._rotations[4 * newIndex + 0] = this._rotations[4 * i + 0];
+                this._rotations[4 * newIndex + 1] = this._rotations[4 * i + 1];
+                this._rotations[4 * newIndex + 2] = this._rotations[4 * i + 2];
+                this._rotations[4 * newIndex + 3] = this._rotations[4 * i + 3];
+
+                this._scales[3 * newIndex + 0] = this._scales[3 * i + 0];
+                this._scales[3 * newIndex + 1] = this._scales[3 * i + 1];
+                this._scales[3 * newIndex + 2] = this._scales[3 * i + 2];
+
+                newIndex += 1;
+            }
+
+            this._height = Math.ceil((2 * newIndex) / this._width);
+            this._vertexCount = newIndex;
+            this._data = new Uint32Array(this._data.buffer, 0, this._width * this._height * 4);
+            this._positions = new Float32Array(this._positions.buffer, 0, 3 * newIndex);
+            this._rotations = new Float32Array(this._rotations.buffer, 0, 4 * newIndex);
+            this._scales = new Float32Array(this._scales.buffer, 0, 3 * newIndex);
+
+            this.dispatchEvent(changeEvent);
+        };
+
         this.saveToFile = (name: string) => {
             if (!document) return;
-            const blob = new Blob([this._data.buffer], { type: "application/octet-stream" });
+
+            const outputData = new Uint8Array(this._vertexCount * Scene.RowLength);
+
+            const f_buffer = new Float32Array(outputData.buffer);
+            const u_buffer = new Uint8Array(outputData.buffer);
+
+            const data_c = new Uint8Array(this._data.buffer);
+
+            for (let i = 0; i < this._vertexCount; i++) {
+                f_buffer[8 * i + 0] = this._positions[3 * i + 0];
+                f_buffer[8 * i + 1] = this._positions[3 * i + 1];
+                f_buffer[8 * i + 2] = this._positions[3 * i + 2];
+
+                u_buffer[32 * i + 24 + 0] = data_c[4 * (8 * i + 7) + 0];
+                u_buffer[32 * i + 24 + 1] = data_c[4 * (8 * i + 7) + 1];
+                u_buffer[32 * i + 24 + 2] = data_c[4 * (8 * i + 7) + 2];
+                u_buffer[32 * i + 24 + 3] = data_c[4 * (8 * i + 7) + 3];
+
+                f_buffer[8 * i + 3 + 0] = this._scales[3 * i + 0];
+                f_buffer[8 * i + 3 + 1] = this._scales[3 * i + 1];
+                f_buffer[8 * i + 3 + 2] = this._scales[3 * i + 2];
+
+                u_buffer[32 * i + 28 + 0] = (this._rotations[4 * i + 0] * 128 + 128) & 0xff;
+                u_buffer[32 * i + 28 + 1] = (this._rotations[4 * i + 1] * 128 + 128) & 0xff;
+                u_buffer[32 * i + 28 + 2] = (this._rotations[4 * i + 2] * 128 + 128) & 0xff;
+                u_buffer[32 * i + 28 + 3] = (this._rotations[4 * i + 3] * 128 + 128) & 0xff;
+            }
+
+            const blob = new Blob([outputData.buffer], { type: "application/octet-stream" });
             const link = document.createElement("a");
             link.download = name;
             link.href = URL.createObjectURL(blob);
